@@ -451,7 +451,7 @@ function initLaunchSimulator() {
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
               <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
             </svg>
-            <span>Deploy to Solana Mainnet (~0.02 SOL via Phantom)</span>
+            <span>Deploy to Solana Mainnet (~0.02 SOL Gas)</span>
           </button>
           <div id="mainnetStatus_${claimCode}" style="font-size: 0.75rem; color: #a1a1aa; text-align: center; margin-top: 5px;"></div>
         </div>
