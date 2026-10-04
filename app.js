@@ -284,6 +284,11 @@ window.copyText = function (elementId, btnElement) {
   if (!target) return;
   const text = target.innerText || target.textContent;
   
+  if (text.trim().toLowerCase().includes('currently being updated')) {
+    showToast('Contract address is currently being updated!');
+    return;
+  }
+  
   navigator.clipboard.writeText(text.trim()).then(() => {
     showToast('Copied to clipboard!');
     if (btnElement) {
