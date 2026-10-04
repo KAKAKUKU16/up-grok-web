@@ -2093,8 +2093,8 @@ code {
         </div>
         <div class="top-nav-right" style="display: flex; gap: 8px; align-items: center;">
           <button class="btn btn-pill-white" onclick="openModal('addGrokModal')">Add UP to Grok</button>
-          <button class="btn btn-pill-dark" id="connectWalletBtn" onclick="connectPhantomWallet()" style="background: #27272a; border: 1px solid rgba(168, 85, 247, 0.4); color: #e9d5ff; font-weight: 500; display: flex; align-items: center; gap: 6px; padding: 6px 14px; cursor: pointer; border-radius: 999px;">
-            <span id="walletDot" style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #a855f7; box-shadow: 0 0 8px #a855f7;"></span>
+          <button class="btn btn-pill-dark" id="connectWalletBtn" onclick="connectPhantomWallet()" title="Connect Wallet" style="background: #27272a; border: 1px solid rgba(168, 85, 247, 0.4); color: #e9d5ff; font-weight: 500; display: flex; align-items: center; gap: 6px; padding: 6px 14px; cursor: pointer; border-radius: 999px; transition: all 0.2s ease;">
+            <span id="walletDot" style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #a855f7; box-shadow: 0 0 8px #a855f7; transition: all 0.2s ease;"></span>
             <span id="walletBtnText">Connect Wallet</span>
           </button>
         </div>
@@ -2357,7 +2357,7 @@ code {
               </div>
 
               <p class="assistant-text">
-                No. UP creates the coin and pays the launch cost. You get three things back:
+                Not to create! Generating and simulating memecoins in Grok is 100% free ($0) with zero wallet required. When you're ready to broadcast live to Solana Mainnet, you connect your wallet to cover Solana's trivial network gas (~0.02 SOL)—a cheap, standard rent fee that goes directly to the Solana blockchain. UP charges $0 platform fees. Once deployed, you get three things back:
               </p>
 
               <div class="cards-grid cards-3-col">
@@ -2430,7 +2430,7 @@ code {
 
               <div class="tokenomics-narrative-box">
                 <p class="assistant-text font-relaxed">
-                  Every coin launched with UP buys and burns $UP. Bond your coin and 80% of its creator fees, from its first trade, buy and burn $UP, and you claim 3 SOL, then 20% of its fees for as long as it trades, paid in SOL, at hitup.fun/claim with your claim code. Before a coin bonds, 60% of its fees pay for new launches and other people's bond bonuses, and 40% buy and burn $UP. The fees are locked to UP on-chain the minute a coin launches.
+                  Every coin launched with UP buys and burns $UP. When your coin bonds on pump.fun, you claim an instant 3 SOL creator milestone bonus, plus 20% perpetual rev-share on all creator trading fees for as long as it trades—paid directly to your Solana wallet using your secret claim code. The remaining 80% of creator fees continuously buy & burn $UP on-chain, driving permanent deflationary pressure. Zero platform launch fees.
                 </p>
 
                 <!-- Value Highlights Grid -->
@@ -2723,8 +2723,8 @@ code {
         </div>
         <div class="docs-section">
           <h4>Fee Distribution Mechanics</h4>
-          <p><strong>Pre-Bonding:</strong> 60% of volume fees fund network gas subsidization & bond incentives. 40% immediately executes an on-chain buy-and-burn of $UP.</p>
-          <p><strong>Post-Bonding:</strong> 80% of creator fees buy and burn $UP. The creator claims an immediate 3 SOL bonus, followed by 20% perpetual revenue share in SOL.</p>
+          <p><strong>Creation & Simulation:</strong> $0 platform fee. Memecoin metadata and Ed25519 mint keys are created free in Grok. Deploying live to Solana Mainnet costs only trivial Solana network gas (~0.02 SOL rent).</p>
+          <p><strong>Trading Fees & Incentives:</strong> 80% of creator fees buy and burn $UP on-chain. When your coin bonds on pump.fun, you claim an instant 3 SOL creator milestone bonus, followed by 20% perpetual fee rev-share in SOL for as long as it trades.</p>
         </div>
       </div>
     </div>
@@ -2779,12 +2779,108 @@ document.addEventListener('DOMContentLoaded', () => {
   initLaunchSimulator();
   initModals();
   initHeroDemo();
+  initClaimHandler();
+  setupWalletButtonHover();
+  initWalletProviderEvents();
 });
 
 // ==========================================
 // Phantom Wallet & Solana Mainnet Integration
 // ==========================================
 let connectedWallet = null;
+
+function updateWalletUI(isConnected) {
+  const btn = document.getElementById('connectWalletBtn');
+  const btnText = document.getElementById('walletBtnText');
+  const dot = document.getElementById('walletDot');
+  if (!btnText || !dot) return;
+
+  if (isConnected && connectedWallet) {
+    btnText.innerText = `${connectedWallet.slice(0, 4)}...${connectedWallet.slice(-4)}`;
+    dot.style.background = '#22c55e';
+    dot.style.boxShadow = '0 0 8px #22c55e';
+    if (btn) {
+      btn.title = `Connected: ${connectedWallet} (Click to Disconnect)`;
+      btn.style.borderColor = 'rgba(34, 197, 94, 0.4)';
+      btn.style.color = '#86efac';
+    }
+  } else {
+    btnText.innerText = 'Connect Wallet';
+    dot.style.background = '#a855f7';
+    dot.style.boxShadow = '0 0 8px #a855f7';
+    if (btn) {
+      btn.title = 'Connect Wallet';
+      btn.style.borderColor = 'rgba(168, 85, 247, 0.4)';
+      btn.style.color = '#e9d5ff';
+    }
+  }
+}
+
+function setupWalletButtonHover() {
+  const btn = document.getElementById('connectWalletBtn');
+  const btnText = document.getElementById('walletBtnText');
+  const dot = document.getElementById('walletDot');
+  if (!btn || !btnText || !dot) return;
+
+  btn.addEventListener('mouseenter', () => {
+    if (connectedWallet) {
+      btnText.innerText = 'Disconnect';
+      dot.style.background = '#ef4444';
+      dot.style.boxShadow = '0 0 8px #ef4444';
+      btn.style.borderColor = 'rgba(239, 68, 68, 0.5)';
+      btn.style.color = '#fca5a5';
+    }
+  });
+
+  btn.addEventListener('mouseleave', () => {
+    if (connectedWallet) {
+      btnText.innerText = `${connectedWallet.slice(0, 4)}...${connectedWallet.slice(-4)}`;
+      dot.style.background = '#22c55e';
+      dot.style.boxShadow = '0 0 8px #22c55e';
+      btn.style.borderColor = 'rgba(34, 197, 94, 0.4)';
+      btn.style.color = '#86efac';
+    } else {
+      btnText.innerText = 'Connect Wallet';
+      dot.style.background = '#a855f7';
+      dot.style.boxShadow = '0 0 8px #a855f7';
+      btn.style.borderColor = 'rgba(168, 85, 247, 0.4)';
+      btn.style.color = '#e9d5ff';
+    }
+  });
+}
+
+function initWalletProviderEvents() {
+  const provider = window.phantom?.solana || window.solana;
+  if (!provider || !provider.isPhantom) return;
+
+  if (provider.on) {
+    provider.on('disconnect', () => {
+      connectedWallet = null;
+      updateWalletUI(false);
+    });
+    provider.on('accountChanged', (publicKey) => {
+      if (publicKey) {
+        connectedWallet = publicKey.toString();
+        updateWalletUI(true);
+      } else {
+        connectedWallet = null;
+        updateWalletUI(false);
+      }
+    });
+  }
+
+  // Silent eager connect if already authorized
+  try {
+    provider.connect({ onlyIfTrusted: true })
+      .then((resp) => {
+        if (resp && resp.publicKey) {
+          connectedWallet = resp.publicKey.toString();
+          updateWalletUI(true);
+        }
+      })
+      .catch(() => {});
+  } catch (err) {}
+}
 
 async function connectPhantomWallet() {
   const provider = window.phantom?.solana || window.solana;
@@ -2794,19 +2890,26 @@ async function connectPhantomWallet() {
     return null;
   }
 
+  // Toggle disconnect if already connected
+  if (connectedWallet) {
+    try {
+      if (provider.disconnect) {
+        await provider.disconnect();
+      }
+    } catch (e) {
+      console.log('Phantom disconnect:', e);
+    }
+    connectedWallet = null;
+    updateWalletUI(false);
+    showToast('Wallet disconnected');
+    return null;
+  }
+
   try {
     const resp = await provider.connect();
     connectedWallet = resp.publicKey.toString();
-    const btnText = document.getElementById('walletBtnText');
-    const dot = document.getElementById('walletDot');
-    if (btnText) {
-      btnText.innerText = `${connectedWallet.slice(0, 4)}...${connectedWallet.slice(-4)}`;
-    }
-    if (dot) {
-      dot.style.background = '#22c55e';
-      dot.style.boxShadow = '0 0 8px #22c55e';
-    }
-    showToast(`Phantom Connected: ${connectedWallet.slice(0, 4)}...${connectedWallet.slice(-4)}`);
+    updateWalletUI(true);
+    showToast(`Connected: ${connectedWallet.slice(0, 4)}...${connectedWallet.slice(-4)}`);
     return connectedWallet;
   } catch (err) {
     console.log('User dismissed Phantom connection');
@@ -2849,7 +2952,7 @@ async function deployToMainnet(coinName, ticker, claimCode) {
     const mintPubkey = mintKeypair.publicKey.toBase58();
 
     if (statusDiv) {
-      statusDiv.innerText = 'Constructing transaction (~0.02 SOL network fee)...';
+      statusDiv.innerText = 'Constructing transaction (trivial ~0.02 SOL Solana rent)...';
     }
 
     // 2. Request pump.fun create instruction from public PumpPortal API
@@ -2924,10 +3027,10 @@ async function deployToMainnet(coinName, ticker, claimCode) {
     console.error('Mainnet deploy error:', error);
     if (btn) {
       btn.disabled = false;
-      btn.innerText = '🟣 Deploy to Solana Mainnet (~0.02 SOL via Phantom)';
+      btn.innerText = '🟣 Deploy to Solana Mainnet (~0.02 SOL Gas)';
     }
     if (statusDiv) {
-      statusDiv.innerText = error.message || 'Transaction cancelled or insufficient SOL balance (~0.02 SOL required).';
+      statusDiv.innerText = error.message || 'Transaction cancelled or insufficient SOL balance (~0.02 SOL network rent required).';
       statusDiv.style.color = '#f87171';
     }
     showToast(error.message || 'Transaction cancelled or rejected');
@@ -3223,6 +3326,7 @@ function initLaunchSimulator() {
             </svg>
             <span>Deploy to Solana Mainnet (~0.02 SOL Gas)</span>
           </button>
+          <div style="font-size: 0.72rem; color: #71717a; text-align: center; margin-top: 4px;">Trivial network gas (~0.02 SOL) paid to Solana rent • $0 UP platform fee</div>
           <div id="mainnetStatus_${claimCode}" style="font-size: 0.75rem; color: #a1a1aa; text-align: center; margin-top: 5px;"></div>
         </div>
 

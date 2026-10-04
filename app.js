@@ -9,12 +9,107 @@ document.addEventListener('DOMContentLoaded', () => {
   initModals();
   initHeroDemo();
   initClaimHandler();
+  setupWalletButtonHover();
+  initWalletProviderEvents();
 });
 
 // ==========================================
 // Phantom Wallet & Solana Mainnet Integration
 // ==========================================
 let connectedWallet = null;
+
+function updateWalletUI(isConnected) {
+  const btn = document.getElementById('connectWalletBtn');
+  const btnText = document.getElementById('walletBtnText');
+  const dot = document.getElementById('walletDot');
+  if (!btnText || !dot) return;
+
+  if (isConnected && connectedWallet) {
+    btnText.innerText = `${connectedWallet.slice(0, 4)}...${connectedWallet.slice(-4)}`;
+    dot.style.background = '#22c55e';
+    dot.style.boxShadow = '0 0 8px #22c55e';
+    if (btn) {
+      btn.title = `Connected: ${connectedWallet} (Click to Disconnect)`;
+      btn.style.borderColor = 'rgba(34, 197, 94, 0.4)';
+      btn.style.color = '#86efac';
+    }
+  } else {
+    btnText.innerText = 'Connect Wallet';
+    dot.style.background = '#a855f7';
+    dot.style.boxShadow = '0 0 8px #a855f7';
+    if (btn) {
+      btn.title = 'Connect Wallet';
+      btn.style.borderColor = 'rgba(168, 85, 247, 0.4)';
+      btn.style.color = '#e9d5ff';
+    }
+  }
+}
+
+function setupWalletButtonHover() {
+  const btn = document.getElementById('connectWalletBtn');
+  const btnText = document.getElementById('walletBtnText');
+  const dot = document.getElementById('walletDot');
+  if (!btn || !btnText || !dot) return;
+
+  btn.addEventListener('mouseenter', () => {
+    if (connectedWallet) {
+      btnText.innerText = 'Disconnect';
+      dot.style.background = '#ef4444';
+      dot.style.boxShadow = '0 0 8px #ef4444';
+      btn.style.borderColor = 'rgba(239, 68, 68, 0.5)';
+      btn.style.color = '#fca5a5';
+    }
+  });
+
+  btn.addEventListener('mouseleave', () => {
+    if (connectedWallet) {
+      btnText.innerText = `${connectedWallet.slice(0, 4)}...${connectedWallet.slice(-4)}`;
+      dot.style.background = '#22c55e';
+      dot.style.boxShadow = '0 0 8px #22c55e';
+      btn.style.borderColor = 'rgba(34, 197, 94, 0.4)';
+      btn.style.color = '#86efac';
+    } else {
+      btnText.innerText = 'Connect Wallet';
+      dot.style.background = '#a855f7';
+      dot.style.boxShadow = '0 0 8px #a855f7';
+      btn.style.borderColor = 'rgba(168, 85, 247, 0.4)';
+      btn.style.color = '#e9d5ff';
+    }
+  });
+}
+
+function initWalletProviderEvents() {
+  const provider = window.phantom?.solana || window.solana;
+  if (!provider || !provider.isPhantom) return;
+
+  if (provider.on) {
+    provider.on('disconnect', () => {
+      connectedWallet = null;
+      updateWalletUI(false);
+    });
+    provider.on('accountChanged', (publicKey) => {
+      if (publicKey) {
+        connectedWallet = publicKey.toString();
+        updateWalletUI(true);
+      } else {
+        connectedWallet = null;
+        updateWalletUI(false);
+      }
+    });
+  }
+
+  // Silent eager connect if already authorized
+  try {
+    provider.connect({ onlyIfTrusted: true })
+      .then((resp) => {
+        if (resp && resp.publicKey) {
+          connectedWallet = resp.publicKey.toString();
+          updateWalletUI(true);
+        }
+      })
+      .catch(() => {});
+  } catch (err) {}
+}
 
 async function connectPhantomWallet() {
   const provider = window.phantom?.solana || window.solana;
@@ -24,19 +119,26 @@ async function connectPhantomWallet() {
     return null;
   }
 
+  // Toggle disconnect if already connected
+  if (connectedWallet) {
+    try {
+      if (provider.disconnect) {
+        await provider.disconnect();
+      }
+    } catch (e) {
+      console.log('Phantom disconnect:', e);
+    }
+    connectedWallet = null;
+    updateWalletUI(false);
+    showToast('Wallet disconnected');
+    return null;
+  }
+
   try {
     const resp = await provider.connect();
     connectedWallet = resp.publicKey.toString();
-    const btnText = document.getElementById('walletBtnText');
-    const dot = document.getElementById('walletDot');
-    if (btnText) {
-      btnText.innerText = `${connectedWallet.slice(0, 4)}...${connectedWallet.slice(-4)}`;
-    }
-    if (dot) {
-      dot.style.background = '#22c55e';
-      dot.style.boxShadow = '0 0 8px #22c55e';
-    }
-    showToast(`Phantom Connected: ${connectedWallet.slice(0, 4)}...${connectedWallet.slice(-4)}`);
+    updateWalletUI(true);
+    showToast(`Connected: ${connectedWallet.slice(0, 4)}...${connectedWallet.slice(-4)}`);
     return connectedWallet;
   } catch (err) {
     console.log('User dismissed Phantom connection');
@@ -79,7 +181,7 @@ async function deployToMainnet(coinName, ticker, claimCode) {
     const mintPubkey = mintKeypair.publicKey.toBase58();
 
     if (statusDiv) {
-      statusDiv.innerText = 'Constructing transaction (~0.02 SOL network fee)...';
+      statusDiv.innerText = 'Constructing transaction (trivial ~0.02 SOL Solana rent)...';
     }
 
     // 2. Request pump.fun create instruction from public PumpPortal API
@@ -154,10 +256,10 @@ async function deployToMainnet(coinName, ticker, claimCode) {
     console.error('Mainnet deploy error:', error);
     if (btn) {
       btn.disabled = false;
-      btn.innerText = '🟣 Deploy to Solana Mainnet (~0.02 SOL via Phantom)';
+      btn.innerText = '🟣 Deploy to Solana Mainnet (~0.02 SOL Gas)';
     }
     if (statusDiv) {
-      statusDiv.innerText = error.message || 'Transaction cancelled or insufficient SOL balance (~0.02 SOL required).';
+      statusDiv.innerText = error.message || 'Transaction cancelled or insufficient SOL balance (~0.02 SOL network rent required).';
       statusDiv.style.color = '#f87171';
     }
     showToast(error.message || 'Transaction cancelled or rejected');
@@ -453,6 +555,7 @@ function initLaunchSimulator() {
             </svg>
             <span>Deploy to Solana Mainnet (~0.02 SOL Gas)</span>
           </button>
+          <div style="font-size: 0.72rem; color: #71717a; text-align: center; margin-top: 4px;">Trivial network gas (~0.02 SOL) paid to Solana rent • $0 UP platform fee</div>
           <div id="mainnetStatus_${claimCode}" style="font-size: 0.75rem; color: #a1a1aa; text-align: center; margin-top: 5px;"></div>
         </div>
 
