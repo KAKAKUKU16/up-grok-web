@@ -11,6 +11,159 @@ document.addEventListener('DOMContentLoaded', () => {
   initClaimHandler();
 });
 
+// ==========================================
+// Phantom Wallet & Solana Mainnet Integration
+// ==========================================
+let connectedWallet = null;
+
+async function connectPhantomWallet() {
+  const provider = window.phantom?.solana || window.solana;
+  if (!provider || !provider.isPhantom) {
+    showToast('Phantom not detected. Opening phantom.app...');
+    window.open('https://phantom.app/', '_blank');
+    return null;
+  }
+
+  try {
+    const resp = await provider.connect();
+    connectedWallet = resp.publicKey.toString();
+    const btnText = document.getElementById('walletBtnText');
+    const dot = document.getElementById('walletDot');
+    if (btnText) {
+      btnText.innerText = `${connectedWallet.slice(0, 4)}...${connectedWallet.slice(-4)}`;
+    }
+    if (dot) {
+      dot.style.background = '#22c55e';
+      dot.style.boxShadow = '0 0 8px #22c55e';
+    }
+    showToast(`Phantom Connected: ${connectedWallet.slice(0, 4)}...${connectedWallet.slice(-4)}`);
+    return connectedWallet;
+  } catch (err) {
+    console.log('User dismissed Phantom connection');
+    return null;
+  }
+}
+
+async function deployToMainnet(coinName, ticker, claimCode) {
+  const provider = window.phantom?.solana || window.solana;
+  if (!provider || !provider.isPhantom) {
+    showToast('Please install Phantom wallet (phantom.app)');
+    window.open('https://phantom.app/', '_blank');
+    return;
+  }
+
+  if (!connectedWallet) {
+    const wallet = await connectPhantomWallet();
+    if (!wallet) return;
+  }
+
+  const btn = document.getElementById(`mainnetDeployBtn_${claimCode}`);
+  const statusDiv = document.getElementById(`mainnetStatus_${claimCode}`);
+
+  if (btn) {
+    btn.disabled = true;
+    btn.innerText = '⏳ Preparing pump.fun transaction...';
+  }
+  if (statusDiv) {
+    statusDiv.style.color = '#a1a1aa';
+    statusDiv.innerText = 'Requesting on-chain pump.fun bonding curve via PumpPortal...';
+  }
+
+  try {
+    if (typeof solanaWeb3 === 'undefined') {
+      throw new Error('Solana Web3 is initializing. Please click again in 2 seconds.');
+    }
+
+    // 1. Generate fresh Solana mint keypair directly in visitor browser
+    const mintKeypair = solanaWeb3.Keypair.generate();
+    const mintPubkey = mintKeypair.publicKey.toBase58();
+
+    if (statusDiv) {
+      statusDiv.innerText = 'Constructing transaction (~0.02 SOL network fee)...';
+    }
+
+    // 2. Request pump.fun create instruction from public PumpPortal API
+    const txResponse = await fetch('https://pumpportal.fun/api/trade-local', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        publicKey: connectedWallet,
+        action: 'create',
+        tokenMetadata: {
+          name: coinName,
+          symbol: ticker,
+          uri: `https://hitup.fun/api/metadata/${ticker.toLowerCase()}`
+        },
+        mint: mintPubkey,
+        denomAmount: 0,
+        amount: 0,
+        slippage: 10,
+        priorityFee: 0.0005,
+        pool: 'pump'
+      })
+    });
+
+    if (!txResponse.ok) {
+      const errText = await txResponse.text();
+      throw new Error(errText || 'Network node busy. Please verify you have ~0.021 SOL for network gas.');
+    }
+
+    const txBytes = await txResponse.arrayBuffer();
+    const tx = solanaWeb3.VersionedTransaction.deserialize(new Uint8Array(txBytes));
+
+    // Sign with the new token mint keypair
+    tx.sign([mintKeypair]);
+
+    if (statusDiv) {
+      statusDiv.innerText = 'Waiting for your approval in Phantom...';
+    }
+
+    // Request visitor to sign & broadcast with Phantom
+    const { signature } = await provider.signAndSendTransaction(tx);
+
+    // Save live launch to Render backend
+    try {
+      await fetch('https://up-grok-backend.onrender.com/api/launch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: coinName,
+          symbol: ticker,
+          description: `${coinName} ($${ticker}) launched via UP on pump.fun.`,
+          mint: mintPubkey,
+          claimCode: claimCode
+        })
+      });
+    } catch (_) {}
+
+    if (btn) {
+      btn.style.background = '#22c55e';
+      btn.style.borderColor = '#16a34a';
+      btn.innerText = '✅ Live on pump.fun Mainnet!';
+    }
+    if (statusDiv) {
+      statusDiv.innerHTML = `<span style="color:#4ade80; font-weight:600;">🚀 Deployed to Mainnet!</span> <a href="https://solscan.io/tx/${signature}" target="_blank" rel="noopener noreferrer" style="color:#c084fc; text-decoration:underline; margin-left:6px;">View on Solscan ↗</a>`;
+    }
+
+    showToast(`🚀 ${coinName} is live on pump.fun!`);
+    setTimeout(() => {
+      window.open(`https://pump.fun/coin/${mintPubkey}`, '_blank');
+    }, 1500);
+
+  } catch (error) {
+    console.error('Mainnet deploy error:', error);
+    if (btn) {
+      btn.disabled = false;
+      btn.innerText = '🟣 Deploy to Solana Mainnet (~0.02 SOL via Phantom)';
+    }
+    if (statusDiv) {
+      statusDiv.innerText = error.message || 'Transaction cancelled or insufficient SOL balance (~0.02 SOL required).';
+      statusDiv.style.color = '#f87171';
+    }
+    showToast(error.message || 'Transaction cancelled or rejected');
+  }
+}
+
 // Toast Notification
 function showToast(message = 'Copied to clipboard!') {
   const toast = document.getElementById('toast');
@@ -291,6 +444,16 @@ function initLaunchSimulator() {
               <button class="btn-copy-card" onclick="navigator.clipboard.writeText('${claimCode}'); showToast('Claim code copied!')">Copy</button>
             </div>
           </div>
+        </div>
+
+        <div style="margin-top: 10px; margin-bottom: 8px;">
+          <button class="btn btn-pill-purple" id="mainnetDeployBtn_${claimCode}" onclick="deployToMainnet('${coinName}', '${ticker}', '${claimCode}')" style="width: 100%; padding: 10px 16px; background: linear-gradient(135deg, #7c3aed, #9333ea); border: 1px solid #a855f7; color: #ffffff; font-weight: 600; font-size: 0.86rem; border-radius: 999px; display: flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer; box-shadow: 0 4px 16px rgba(147, 51, 234, 0.4); transition: all 0.2s ease;">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+            </svg>
+            <span>Deploy to Solana Mainnet (~0.02 SOL via Phantom)</span>
+          </button>
+          <div id="mainnetStatus_${claimCode}" style="font-size: 0.75rem; color: #a1a1aa; text-align: center; margin-top: 5px;"></div>
         </div>
 
         <div style="display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap;">
